@@ -9,3 +9,4 @@ edition = "2021"
 actix-cors = "0.7.0"
 actix-web = "4.4.1"
 serde = {version = "1.0.196", features = ["derive"]}
+uuid = { version = "0.8.1", features = ["v4", "serde"] }

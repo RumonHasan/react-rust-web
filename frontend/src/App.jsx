@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import { v4 as uuidv4 } from 'uuid';
 import './App.css';
 
 export const LOCAL_PORT = 'http://127.0.0.1:8080';
@@ -22,6 +23,7 @@ function App() {
       }
     };
     getUsers();
+    console.log(users);
   }, []);
 
   const handleInputChange = (event) => {
@@ -39,6 +41,7 @@ function App() {
       const check = [...Object.values(newUser)].every((val) => val !== '');
       if (check) {
         const newUserObject = {
+          id: uuidv4(),
           username: newUser.username,
           email: newUser.email,
           age: Number(newUser.age),
@@ -53,16 +56,50 @@ function App() {
     }
   };
 
+  // updating the user after setting new id and details
+  const updateUser = async (e) => {
+    e.preventDefault();
+    try {
+      const patch_user = await axios.post(`${LOCAL_PORT}/patch`);
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  // for deleting user
+  const deleteUser = async (e, deleteId) => {
+    e.preventDefault();
+    try {
+      console.log(deleteId);
+      const deleted_user = await axios.delete(
+        `${LOCAL_PORT}/delete/${deleteId}`
+      );
+      if (deleted_user) {
+        console.log('deleted');
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
   return (
     <>
       <div>
         {users?.map((user, index) => {
-          const { username, email, age } = user;
+          const { id, username, email, age } = user;
           return (
-            <div key={index}>
+            <div
+              key={index}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: '10px',
+              }}
+            >
               <span>
                 {username},{email}, {age}
               </span>
+              <button onClick={(e) => deleteUser(e, id)}>Delete User</button>
             </div>
           );
         })}

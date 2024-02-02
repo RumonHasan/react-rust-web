@@ -1,8 +1,11 @@
 use std::vec;
 use actix_cors::Cors;
 use actix_web::{
+    cookie::time::error,
+    delete,
     get,
     http::{ self, StatusCode },
+    patch,
     post,
     web::{ self },
     App,
@@ -11,11 +14,13 @@ use actix_web::{
     Responder,
 };
 use serde::{ Serialize, Deserialize };
+use uuid::Uuid;
 use std::sync::{ Mutex, Arc };
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 // main struct
 struct User {
+    id: Uuid,
     username: String,
     email: String,
     age: u32,
@@ -27,22 +32,19 @@ struct AppState {
 }
 // implements of app state
 impl AppState {
-    pub fn return_curr_app_state()-> AppState{
-        AppState{
+    pub fn return_curr_app_state() -> AppState {
+        AppState {
             users: Arc::new(Mutex::new(Vec::new())),
         }
     }
-    // Method to initialize the state with random users
-    pub fn init_with_random_users() -> AppState {
-        let random_users = fetch_random_users();
-        AppState {
-            users: Arc::new(Mutex::new(random_users)),
-        }
-    }
+    // pushing the new user to the existing app state
     pub fn set_new_user(&self, new_user: User) {
-        // locking the users and checking whether they exist or not then only pushing it to the existing users 
         let mut existing_users = self.users.lock().unwrap();
         existing_users.push(new_user);
+    }
+    pub fn generate_uuid() -> Uuid {
+        let new_uuid = Uuid::new_v4();
+        new_uuid
     }
 }
 // basic cors route
@@ -53,6 +55,7 @@ async fn index(data: web::Data<AppState>) -> impl Responder {
     HttpResponse::Ok().json(local_users)
 }
 
+// for posting a single todo
 #[post("/post")]
 async fn post_users(body: web::Json<User>, data: web::Data<AppState>) -> impl Responder {
     let new_user: User = body.into_inner(); // into inner is used to consumer the JSON body
@@ -60,18 +63,25 @@ async fn post_users(body: web::Json<User>, data: web::Data<AppState>) -> impl Re
     HttpResponse::build(StatusCode::OK).body("You managed to post it... jeezus boi!")
 }
 
-fn fetch_random_users() -> Vec<User> {
-    let counter: i32 = 10;
-    let mut users: Vec<User> = Vec::new();
-    for _ in 0..counter {
-        let single_user: User = User {
-            username: String::from("rumon"),
-            email: "rumon@gmail.com".to_string(),
-            age: 27,
-        };
-        users.push(single_user);
+// route to update the user
+#[patch("/update/{id}")]
+async fn update_user(id: web::Path<String>, data: web::Data<AppState>) -> impl Responder {
+    println!("{}", id);
+    let existing_users = data.users.lock().unwrap();
+    HttpResponse::Ok()
+}
+
+// deleting a user
+#[delete("/delete/{id}")]
+async fn delete_user(id: web::Path<String>, data: web::Data<AppState>) -> impl Responder {
+    let mut mutable_user_ref = data.users.lock().unwrap();
+    let delete_id = id.to_string();
+    let delete_user = mutable_user_ref.iter().find(|val| val.id.to_string() == delete_id);
+    if delete_user.is_none() {
+        return HttpResponse::NoContent().finish();
     }
-    users
+    mutable_user_ref.retain(|user|user.id.to_string() != delete_id);
+    HttpResponse::build(StatusCode::OK).body("User has been deleted successfully")
 }
 
 #[actix_web::main]
@@ -80,6 +90,7 @@ async fn main() -> std::io::Result<()> {
     let app_state = AppState::return_curr_app_state(); // initial renders
     let app_data = web::Data::new(app_state);
 
+    // local host server code
     let server_result = HttpServer::new(move || {
         let cors = Cors::default()
             .allowed_origin("http://127.0.0.1:5173")
@@ -91,7 +102,12 @@ async fn main() -> std::io::Result<()> {
             .allowed_header(http::header::CONTENT_TYPE)
             .max_age(3600);
 
-        App::new().app_data(app_data.clone()).wrap(cors).service(index).service(post_users)
+        App::new()
+            .app_data(app_data.clone())
+            .wrap(cors)
+            .service(index)
+            .service(post_users)
+            .service(delete_user)
     })
         .bind(("127.0.0.1", 8080))?
         .run().await;
