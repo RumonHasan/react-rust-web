@@ -45,6 +45,21 @@ impl AppState {
         let new_uuid = Uuid::new_v4();
         new_uuid
     }
+    pub fn generate_random_users(user_count: i32) -> AppState {
+        let mut random_users: Vec<User> = Vec::new();
+        for _ in 0..user_count {
+            let new_user: User = User {
+                id: AppState::generate_uuid(),
+                username: String::from("something"),
+                email: String::from("something"),
+                age: 27,
+            };
+            random_users.push(new_user);
+        }
+        AppState {
+            users: Arc::new(Mutex::new(random_users)),
+        }
+    }
 }
 // basic cors route
 #[get("/hi")]
@@ -101,7 +116,7 @@ async fn delete_user(id: web::Path<String>, data: web::Data<AppState>) -> impl R
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // creating an instance of appState
-    let app_state = AppState::return_curr_app_state(); // initial renders
+    let app_state = AppState::generate_random_users(10); // initial renders
     let app_data = web::Data::new(app_state);
 
     // local host server code
