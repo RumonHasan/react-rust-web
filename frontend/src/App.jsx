@@ -12,6 +12,8 @@ function App() {
     email: '',
     age: '',
   });
+  const [editOn, setEditOn] = useState(false);
+  const [editId, setEditId] = useState('');
 
   useEffect(() => {
     const getUsers = async () => {
@@ -35,32 +37,66 @@ function App() {
   };
 
   // creating a new user
-  const createNewUser = async (e) => {
-    e.preventDefault();
-    try {
-      const check = [...Object.values(newUser)].every((val) => val !== '');
-      if (check) {
-        const newUserObject = {
-          id: uuidv4(),
-          username: newUser.username,
-          email: newUser.email,
-          age: Number(newUser.age),
-        };
-        const response = await axios.post(`${LOCAL_PORT}/post`, newUserObject);
-        if (response.data) {
-          console.log('successful');
+  const createNewUser = async () => {
+    if (editOn) {
+      updateUser();
+    } else {
+      try {
+        const check = [...Object.values(newUser)].every((val) => val !== '');
+        if (check) {
+          const newUserObject = {
+            id: uuidv4(),
+            username: newUser.username,
+            email: newUser.email,
+            age: Number(newUser.age),
+          };
+          const response = await axios.post(
+            `${LOCAL_PORT}/post`,
+            newUserObject
+          );
+          if (response.data) {
+            console.log('successful');
+          }
         }
+      } catch (error) {
+        console.log(error);
       }
-    } catch (error) {
-      console.log(error);
+    }
+  };
+
+  const updateEdit = (updateId) => {
+    setEditOn(true);
+    setEditId(updateId);
+    const editable_user = users.find((item) => item.id === updateId);
+    if (editable_user) {
+      setNewUser({
+        username: editable_user.username,
+        email: editable_user.email,
+        age: editable_user.age,
+      });
     }
   };
 
   // updating the user after setting new id and details
-  const updateUser = async (e) => {
-    e.preventDefault();
+  const updateUser = async () => {
     try {
-      const patch_user = await axios.post(`${LOCAL_PORT}/patch`);
+      const updated_user = {
+        id: editId,
+        ...newUser,
+      };
+      const patch_user = await axios.patch(
+        `${LOCAL_PORT}/update/${editId}`,
+        updated_user
+      );
+      if (patch_user) {
+        setEditOn(false);
+        setEditId('');
+        setNewUser({
+          username: '',
+          email: '',
+          age: '',
+        });
+      }
     } catch (error) {
       console.log(error);
     }
@@ -99,7 +135,10 @@ function App() {
               <span>
                 {username},{email}, {age}
               </span>
-              <button onClick={(e) => deleteUser(e, id)}>Delete User</button>
+              <div>
+                <button onClick={(e) => deleteUser(e, id)}>Delete User</button>
+                <button onClick={() => updateEdit(id)}>Edit User</button>
+              </div>
             </div>
           );
         })}
@@ -123,7 +162,9 @@ function App() {
           name="age"
           onChange={handleInputChange}
         />
-        <button onClick={(e) => createNewUser(e)}>Add New User</button>
+        <button onClick={() => createNewUser()}>
+          {editOn ? 'Edit User' : 'Add New User'}
+        </button>
       </div>
     </>
   );

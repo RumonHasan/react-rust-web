@@ -1,7 +1,6 @@
 use std::vec;
 use actix_cors::Cors;
 use actix_web::{
-    cookie::time::error,
     delete,
     get,
     http::{ self, StatusCode },
@@ -63,11 +62,26 @@ async fn post_users(body: web::Json<User>, data: web::Data<AppState>) -> impl Re
     HttpResponse::build(StatusCode::OK).body("You managed to post it... jeezus boi!")
 }
 
-// route to update the user
+// update route
 #[patch("/update/{id}")]
-async fn update_user(id: web::Path<String>, data: web::Data<AppState>) -> impl Responder {
-    println!("{}", id);
-    let existing_users = data.users.lock().unwrap();
+async fn update_user(
+    id: web::Path<String>,
+    body: web::Json<User>,
+    data: web::Data<AppState>
+) -> impl Responder {
+    let mut existing_users = data.users.lock().unwrap();
+    let update_id = id.to_string();
+    // updating the user through an iterable reference
+    if
+        let Some(existing_user) = existing_users
+            .iter_mut()
+            .find(|user| user.id.to_string() == update_id)
+    {
+        let new_user_body = body.into_inner();
+        existing_user.age = new_user_body.age;
+        existing_user.username = new_user_body.username;
+        existing_user.email = new_user_body.email;
+    }
     HttpResponse::Ok()
 }
 
@@ -80,7 +94,7 @@ async fn delete_user(id: web::Path<String>, data: web::Data<AppState>) -> impl R
     if delete_user.is_none() {
         return HttpResponse::NoContent().finish();
     }
-    mutable_user_ref.retain(|user|user.id.to_string() != delete_id);
+    mutable_user_ref.retain(|user| user.id.to_string() != delete_id);
     HttpResponse::build(StatusCode::OK).body("User has been deleted successfully")
 }
 
@@ -97,7 +111,8 @@ async fn main() -> std::io::Result<()> {
             .allowed_origin_fn(|origin, _req_head| {
                 origin.as_bytes().ends_with(b".rust-lang.org")
             })
-            .allowed_methods(vec!["GET", "POST", "PATCH"])
+            // the methods need to be allowed here in order for axios in the frontend to access it
+            .allowed_methods(vec!["GET", "POST", "PATCH", "DELETE"])
             .allowed_headers(vec![http::header::AUTHORIZATION, http::header::ACCEPT])
             .allowed_header(http::header::CONTENT_TYPE)
             .max_age(3600);
@@ -108,6 +123,7 @@ async fn main() -> std::io::Result<()> {
             .service(index)
             .service(post_users)
             .service(delete_user)
+            .service(update_user)
     })
         .bind(("127.0.0.1", 8080))?
         .run().await;
