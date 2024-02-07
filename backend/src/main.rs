@@ -12,9 +12,10 @@ use actix_web::{
     HttpServer,
     Responder,
 };
-use serde::{ Serialize, Deserialize };
+use serde::{ de, Deserialize, Serialize };
 use uuid::Uuid;
 use std::sync::{ Mutex, Arc };
+use rand::{ self, Rng };
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 // main struct
@@ -65,10 +66,18 @@ impl AppState {
     // generating some random comments for each user
     pub fn generate_some_comments(comment_count: i32) -> Vec<Comment> {
         let mut comments: Vec<Comment> = Vec::new();
+        let comment_text_vec: Vec<String> = vec![
+            String::from("Hello and hi"),
+            String::from(" hi"),
+            String::from("Hello hi"),
+            String::from("hi")
+        ];
+        let mut rng = rand::thread_rng();
+        let random_index = rng.gen_range(0..comment_text_vec.len());
         for _ in 0..comment_count {
             comments.push(Comment {
                 comment_id: AppState::generate_uuid(),
-                comment: String::from("Hellow what is up bois?"),
+                comment: comment_text_vec[random_index].to_string(),
             });
         }
         comments
@@ -115,6 +124,47 @@ async fn post_comment(
     }
     HttpResponse::Ok()
 }
+// deleting a comment
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+struct DeleteComment {
+    comment_id: String,
+    user_id: String,
+}
+#[post("/comment-delete")]
+async fn delete_comment(
+    body: web::Json<DeleteComment>,
+    data: web::Data<AppState>
+) -> impl Responder {
+    let delete_body = body.into_inner();
+    let user_id = &delete_body.user_id;
+    let comment_id = &delete_body.comment_id;
+    // delete comment logic
+    match
+        data.users
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .find(|user| user.id.to_string() == user_id.to_string())
+    {
+        Some(found_user) => {
+            // direct way
+            found_user.comments.retain(
+                |comment| comment.comment_id.to_string() != comment_id.to_string()
+            );
+        }
+        None => {
+            HttpResponse::NotFound();
+        }
+    }
+    HttpResponse::Ok()
+}
+//alternative way filtering and cloning the owned instanced of the comment trait
+// let new_comments: Vec<Comment> = found_user.comments
+//     .iter()
+//     .filter(|comment| comment.comment_id.to_string() != comment_id.to_string())
+//     .map(|comment| comment.clone())
+//     .collect();
+// found_user.comments = new_comments;
 
 // update route
 #[patch("/update/{id}")]
@@ -179,6 +229,7 @@ async fn main() -> std::io::Result<()> {
             .service(delete_user)
             .service(update_user)
             .service(post_comment)
+            .service(delete_comment)
     })
         .bind(("127.0.0.1", 8080))?
         .run().await;

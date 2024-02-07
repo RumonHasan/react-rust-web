@@ -151,6 +151,20 @@ function App() {
     }
   };
 
+  const deleteComment = async (comment_id, user_id) => {
+    try {
+      console.log(comment_id, user_id);
+      const delete_comment = await axios.post(`${LOCAL_PORT}/comment-delete`, {
+        user_id: user_id.toString(),
+        comment_id: comment_id.toString(),
+      });
+      if (delete_comment) {
+        console.log('deleted comment');
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  };
   return (
     <>
       <div>
@@ -178,7 +192,14 @@ function App() {
               >
                 {comments?.map((comment_item) => {
                   const { comment, comment_id } = comment_item;
-                  return <div key={comment_id}>{comment}</div>;
+                  return (
+                    <div key={comment_id}>
+                      {comment}
+                      <button onClick={() => deleteComment(comment_id, id)}>
+                        Delete a comment
+                      </button>
+                    </div>
+                  );
                 })}
               </div>
               <div>
