@@ -14,18 +14,24 @@ function App() {
   });
   const [editOn, setEditOn] = useState(false);
   const [editId, setEditId] = useState('');
+  // posting a new comment per user
+  const [commentId, setCommentId] = useState('');
+  const [comentFill, setCommentFill] = useState(false);
+  const [newComment, setNewComment] = useState('');
 
   useEffect(() => {
     const getUsers = async () => {
       try {
         const { data } = await axios.get(`${LOCAL_PORT}/hi`);
         setUsers(data);
+        console.log(data);
       } catch (error) {
         console.log(error);
       }
     };
-    getUsers();
-    console.log(users);
+    setTimeout(() => {
+      getUsers();
+    }, 300);
   }, []);
 
   const handleInputChange = (event) => {
@@ -49,6 +55,7 @@ function App() {
             username: newUser.username,
             email: newUser.email,
             age: Number(newUser.age),
+            comments: [],
           };
           const response = await axios.post(
             `${LOCAL_PORT}/post`,
@@ -118,11 +125,37 @@ function App() {
     }
   };
 
+  // posting new comment
+  const addComment = (id) => {
+    setCommentId(id);
+    setCommentFill(true);
+  };
+
+  const submitNewComment = async () => {
+    try {
+      const new_comment = {
+        comment_id: uuidv4(),
+        comment: newComment,
+      };
+      const post_comment = await axios.post(
+        `${LOCAL_PORT}/comment-post/${commentId}`,
+        new_comment
+      );
+      if (post_comment) {
+        console.log('comment has been posted');
+        setCommentId('');
+        setCommentFill(false);
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
   return (
     <>
       <div>
         {users?.map((user, index) => {
-          const { id, username, email, age } = user;
+          const { id, username, email, age, comments } = user;
           return (
             <div
               key={index}
@@ -135,9 +168,25 @@ function App() {
               <span>
                 {username},{email}, {age}
               </span>
+              <div
+                className="comments-container"
+                style={{
+                  marginLeft: '10px',
+                  height: '80px',
+                  overflow: 'auto',
+                }}
+              >
+                {comments?.map((comment_item) => {
+                  const { comment, comment_id } = comment_item;
+                  return <div key={comment_id}>{comment}</div>;
+                })}
+              </div>
               <div>
                 <button onClick={(e) => deleteUser(e, id)}>Delete User</button>
                 <button onClick={() => updateEdit(id)}>Edit User</button>
+                <button onClick={() => addComment(id)}>
+                  Add Comment Button
+                </button>
               </div>
             </div>
           );
@@ -166,6 +215,17 @@ function App() {
           {editOn ? 'Edit User' : 'Add New User'}
         </button>
       </div>
+      {comentFill && (
+        <div>
+          <input
+            placeholder="Enter comment"
+            value={newComment}
+            name="comment"
+            onChange={(e) => setNewComment(e.target.value)}
+          />
+          <button onClick={() => submitNewComment()}>Submit Comment</button>
+        </div>
+      )}
     </>
   );
 }

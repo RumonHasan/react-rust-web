@@ -23,6 +23,12 @@ struct User {
     username: String,
     email: String,
     age: u32,
+    comments: Vec<Comment>,
+}
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+struct Comment {
+    comment_id: Uuid,
+    comment: String,
 }
 // mutable shared app state that is responsible for passing the data
 struct AppState {
@@ -31,11 +37,6 @@ struct AppState {
 }
 // implements of app state
 impl AppState {
-    pub fn return_curr_app_state() -> AppState {
-        AppState {
-            users: Arc::new(Mutex::new(Vec::new())),
-        }
-    }
     // pushing the new user to the existing app state
     pub fn set_new_user(&self, new_user: User) {
         let mut existing_users = self.users.lock().unwrap();
@@ -53,12 +54,24 @@ impl AppState {
                 username: String::from("something"),
                 email: String::from("something"),
                 age: 27,
+                comments: AppState::generate_some_comments(5),
             };
             random_users.push(new_user);
         }
         AppState {
             users: Arc::new(Mutex::new(random_users)),
         }
+    }
+    // generating some random comments for each user
+    pub fn generate_some_comments(comment_count: i32) -> Vec<Comment> {
+        let mut comments: Vec<Comment> = Vec::new();
+        for _ in 0..comment_count {
+            comments.push(Comment {
+                comment_id: AppState::generate_uuid(),
+                comment: String::from("Hellow what is up bois?"),
+            });
+        }
+        comments
     }
 }
 // basic cors route
@@ -75,6 +88,32 @@ async fn post_users(body: web::Json<User>, data: web::Data<AppState>) -> impl Re
     let new_user: User = body.into_inner(); // into inner is used to consumer the JSON body
     data.get_ref().set_new_user(new_user.clone()); // passes the new set of users
     HttpResponse::build(StatusCode::OK).body("You managed to post it... jeezus boi!")
+}
+
+// for receiving a new comment and adding it to the AppState
+#[post("/comment-post/{id}")]
+async fn post_comment(
+    user_id: web::Path<String>,
+    body: web::Json<Comment>,
+    data: web::Data<AppState>
+) -> impl Responder {
+    let user_id = user_id.to_string();
+    let new_comment: Comment = body.into_inner();
+    match
+        data.users
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .find(|user| user.id.to_string() == user_id)
+    {
+        Some(found_user) => {
+            found_user.comments.push(new_comment);
+        }
+        None => {
+            HttpResponse::NotFound();
+        }
+    }
+    HttpResponse::Ok()
 }
 
 // update route
@@ -122,7 +161,7 @@ async fn main() -> std::io::Result<()> {
     // local host server code
     let server_result = HttpServer::new(move || {
         let cors = Cors::default()
-            .allowed_origin("http://127.0.0.1:5173")
+            .allowed_origin("http://localhost:5173")
             .allowed_origin_fn(|origin, _req_head| {
                 origin.as_bytes().ends_with(b".rust-lang.org")
             })
@@ -139,6 +178,7 @@ async fn main() -> std::io::Result<()> {
             .service(post_users)
             .service(delete_user)
             .service(update_user)
+            .service(post_comment)
     })
         .bind(("127.0.0.1", 8080))?
         .run().await;
