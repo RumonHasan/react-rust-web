@@ -1,4 +1,8 @@
-use std::vec;
+mod model;
+mod handler;
+mod schema;
+
+use std::{ os::unix::process, vec };
 use actix_cors::Cors;
 use actix_web::{
     delete,
@@ -12,10 +16,11 @@ use actix_web::{
     HttpServer,
     Responder,
 };
-use serde::{ de, Deserialize, Serialize };
+use serde::{ Deserialize, Serialize };
 use uuid::Uuid;
 use std::sync::{ Mutex, Arc };
 use rand::{ self, Rng };
+use sqlx::mysql::{ MySqlPool as CustomMySqlPool, MySqlPoolOptions as CustomMySqlPoolOptions };
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 // main struct
@@ -36,7 +41,12 @@ struct AppState {
     // this is important for making the todos as immutable reference arcs
     pub users: Arc<Mutex<Vec<User>>>,
 }
-// implements of app state
+
+struct DatabaseState {
+    pub db: CustomMySqlPool, // custom mysql database
+}
+
+// implements of app state and its sub functions
 impl AppState {
     // pushing the new user to the existing app state
     pub fn set_new_user(&self, new_user: User) {
@@ -83,6 +93,9 @@ impl AppState {
         comments
     }
 }
+
+// posting to sql database
+
 // basic cors route
 #[get("/hi")]
 async fn index(data: web::Data<AppState>) -> impl Responder {
@@ -147,7 +160,7 @@ async fn delete_comment(
             .find(|user| user.id.to_string() == user_id.to_string())
     {
         Some(found_user) => {
-            // direct way
+            // directly modifies the element without explicitly releasing the mutex guard lock
             found_user.comments.retain(
                 |comment| comment.comment_id.to_string() != comment_id.to_string()
             );
@@ -158,13 +171,6 @@ async fn delete_comment(
     }
     HttpResponse::Ok()
 }
-//alternative way filtering and cloning the owned instanced of the comment trait
-// let new_comments: Vec<Comment> = found_user.comments
-//     .iter()
-//     .filter(|comment| comment.comment_id.to_string() != comment_id.to_string())
-//     .map(|comment| comment.clone())
-//     .collect();
-// found_user.comments = new_comments;
 
 // update route
 #[patch("/update/{id}")]
@@ -208,6 +214,19 @@ async fn main() -> std::io::Result<()> {
     let app_state = AppState::generate_random_users(10); // initial renders
     let app_data = web::Data::new(app_state);
 
+    // sqlx data base connect
+    let database_url = "mysql://admin:password123@localhost:6500/rust_sqlx";
+    let pool = match CustomMySqlPoolOptions::new().max_connections(10).connect(&database_url).await {
+        Ok(pool) => {
+            println!("✅Connection to the database is successful!");
+            pool
+        }
+        Err(err) => {
+            println!("🔥 Failed to connect to the database: {:?}", err);
+            std::process::exit(1);
+        }
+    };
+
     // local host server code
     let server_result = HttpServer::new(move || {
         let cors = Cors::default()
@@ -222,7 +241,7 @@ async fn main() -> std::io::Result<()> {
             .max_age(3600);
 
         App::new()
-            .app_data(app_data.clone())
+            .app_data(web::Data::new(DatabaseState { db: pool.clone() }))
             .wrap(cors)
             .service(index)
             .service(post_users)
@@ -243,3 +262,12 @@ async fn main() -> std::io::Result<()> {
         Err(err) => Err(err),
     }
 }
+
+//general notes
+//alternative way filtering and cloning the owned instanced of the comment trait
+// let new_comments: Vec<Comment> = found_user.comments
+//     .iter()
+//     .filter(|comment| comment.comment_id.to_string() != comment_id.to_string())
+//     .map(|comment| comment.clone())
+//     .collect();
+// found_user.comments = new_comments;
