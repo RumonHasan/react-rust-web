@@ -2,7 +2,7 @@ mod model;
 mod handler;
 mod schema;
 
-use std::{ os::unix::process, vec };
+use std::{ vec };
 use actix_cors::Cors;
 use actix_web::{
     delete,
@@ -16,11 +16,14 @@ use actix_web::{
     HttpServer,
     Responder,
 };
+use model::{NoteModel, NoteModelResponse};
 use serde::{ Deserialize, Serialize };
 use uuid::Uuid;
 use std::sync::{ Mutex, Arc };
 use rand::{ self, Rng };
 use sqlx::mysql::{ MySqlPool as CustomMySqlPool, MySqlPoolOptions as CustomMySqlPoolOptions };
+
+use crate::schema::{CreateNoteSchema, FilterOptions};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 // main struct
@@ -110,6 +113,50 @@ async fn post_users(body: web::Json<User>, data: web::Data<AppState>) -> impl Re
     let new_user: User = body.into_inner(); // into inner is used to consumer the JSON body
     data.get_ref().set_new_user(new_user.clone()); // passes the new set of users
     HttpResponse::build(StatusCode::OK).body("You managed to post it... jeezus boi!")
+}
+
+// posting notes on note schema
+#[get("/post-notes")]
+pub async fn get_note(
+    opts: web::Query<FilterOptions>,
+    data: web::Data<DatabaseState>,
+) -> impl Responder {
+    let limit = opts.limit.unwrap_or(10);
+    let offset = (opts.page.unwrap_or(1) - 1) * limit;
+
+    let notes: Vec<NoteModel> = sqlx::query_as!(
+        NoteModel,
+        r#"SELECT * FROM notes ORDER by id LIMIT ? OFFSET ?"#,
+        limit as i32,
+        offset as i32
+    )
+    .fetch_all(&data.db)
+    .await
+    .unwrap();
+
+    let note_responses = notes
+        .into_iter()
+        .map(|note| filter_db_record(&note))
+        .collect::<Vec<NoteModelResponse>>();
+
+    let json_response = serde_json::json!({
+        "status": "success",
+        "results": note_responses.len(),
+        "notes": note_responses
+    });
+    HttpResponse::Ok().json(json_response)
+}
+
+fn filter_db_record(note: &NoteModel) -> NoteModelResponse {
+    NoteModelResponse {
+        id: note.id.to_owned(),
+        title: note.title.to_owned(),
+        content: note.content.to_owned(),
+        category: note.category.to_owned().unwrap(),
+        published: note.published != 0,
+        createdAt: note.created_at.unwrap(),
+        updatedAt: note.updated_at.unwrap(),
+    }
 }
 
 // for receiving a new comment and adding it to the AppState
@@ -215,7 +262,7 @@ async fn main() -> std::io::Result<()> {
     let app_data = web::Data::new(app_state);
 
     // sqlx data base connect
-    let database_url = "mysql://admin:password123@localhost:6500/rust_sqlx";
+    let database_url = "mysql://admin:password123@localhost:6500/rust_sqlx"; // default url setup
     let pool = match CustomMySqlPoolOptions::new().max_connections(10).connect(&database_url).await {
         Ok(pool) => {
             println!("✅Connection to the database is successful!");
@@ -243,12 +290,8 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web::Data::new(DatabaseState { db: pool.clone() }))
             .wrap(cors)
+            .service(get_note)
             .service(index)
-            .service(post_users)
-            .service(delete_user)
-            .service(update_user)
-            .service(post_comment)
-            .service(delete_comment)
     })
         .bind(("127.0.0.1", 8080))?
         .run().await;
